@@ -48,7 +48,7 @@ module "eks" {
   private_subnet_ids = module.vpc.private_subnets
 }
 
-# --- OIDC Provider Data Source ---
+# --- OIDC Provider Resources ---
 data "tls_certificate" "eks" {
   url = module.eks.cluster_oidc_issuer_url
 }
@@ -64,7 +64,7 @@ module "iam" {
   source                   = "./modules/iam"
   project_name             = var.project_name
   s3_bucket_arn            = module.s3.bucket_arn
-  oidc_provider_arn        = data.aws_iam_openid_connect_provider.eks.arn
+  oidc_provider_arn        = aws_iam_openid_connect_provider.eks.arn # Corrected this line
   oidc_provider_url        = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
   k8s_namespace            = "gallery-app"
   k8s_service_account_name = "gallery-sa"

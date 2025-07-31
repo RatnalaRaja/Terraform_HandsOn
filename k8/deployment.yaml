@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gallery-deployment
+  namespace: gallery-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gallery
+  template:
+    metadata:
+      labels:
+        app: gallery
+    spec:
+      serviceAccountName: gallery-sa
+      containers:
+        - name: gallery-app
+          image: DOCKER_IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 3001
+          env:
+            - name: S3_BUCKET_NAME
+              value: "S3_BUCKET_NAME_PLACEHOLDER"
+            - name: AWS_REGION
+              value: "AWS_REGION_PLACEHOLDER"
+

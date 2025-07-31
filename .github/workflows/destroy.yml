@@ -28,9 +28,11 @@ jobs:
         run: terraform -chdir=terraform init -input=false
 
       - name: Terraform Destroy (Forcefully)
-        run: terraform -chdir=terraform destroy -auto-approve -lock=false \
-              -var="project_name=photo-gallery" \
-              -var="cluster_name=photo-gallery-eks"
+        run: |
+          terraform -chdir=terraform destroy \
+            -auto-approve \
+            -lock=false \
+            -var="project_name=photo-gallery" \
+            -var="cluster_name=photo-gallery-eks"
 
-      - name: Clean Local Terraform Files (Optional)
-        run: rm -rf terraform/.terraform terraform/.terraform.lock.hcl terraform/terraform.tfstate*
+      

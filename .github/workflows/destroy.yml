@@ -6,7 +6,7 @@ on:
 jobs:
   destroy:
     runs-on: ubuntu-latest
-
+    environment: AWS_ENVIRONMENTS
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -15,7 +15,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.6  # use your version
-
+             
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:

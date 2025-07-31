@@ -19,6 +19,8 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_project_name: "my-test-project"
+      TF_VAR_cluster_name: "my-eks-cluster"
     steps:
       - name: Checkout
         uses: actions/checkout@v3

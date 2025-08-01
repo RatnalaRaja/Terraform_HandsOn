@@ -42,20 +42,23 @@ module "s3" {
 
 # --- EKS Module ---
 module "eks" {
-  source             = "./modules/eks"
-  project_name       = var.project_name
-  cluster_name       = var.cluster_name
-  private_subnet_ids = module.vpc.private_subnets
+  source  = "terraform-aws-modules/eks/aws"
+  version = "~> 20.0"  # or your current version
 
-  # Add this block to grant access to the GitHub Actions runner
-  map_roles = [
+  cluster_name    = var.cluster_name
+  cluster_version = "1.29"
+
+  manage_aws_auth_configmap = true
+
+  aws_auth_roles = [
     {
-      rolearn  = data.aws_caller_identity.current.arn
-      username = "github-actions"
-      groups   = ["system:masters"]
+      rolearn  = module.eks_blueprints_managed_node_group.iam_role_arn
+      username = "system:node:{{EC2PrivateDNSName}}"
+      groups   = ["system:bootstrappers", "system:nodes"]
     }
   ]
 }
+
 
 # --- OIDC Provider Resources ---
 data "tls_certificate" "eks" {

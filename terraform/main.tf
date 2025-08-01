@@ -62,6 +62,40 @@ module "eks" {
   ]
 }
 
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "~> 20.37.2"
+
+  cluster_name    = var.cluster_name
+  cluster_version = "1.29"
+
+  subnet_ids = module.vpc.private_subnets
+  vpc_id     = module.vpc.vpc_id
+
+  eks_managed_node_groups = {
+    default_node_group = {
+      desired_size = 2
+      max_size     = 3
+      min_size     = 1
+
+      instance_types = ["t3.medium"]
+
+      iam_role_additional_policies = {
+        S3Access = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+      }
+    }
+  }
+
+  access_entries = {
+    admin = {
+      kubernetes_groups = ["system:masters"]
+      principal_arn     = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/AdminRole" # Replace with your IAM role or user ARN
+    }
+  }
+}
+
+
+
 
 
 # --- OIDC Provider Resources ---

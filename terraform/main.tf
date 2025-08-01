@@ -43,21 +43,25 @@ module "s3" {
 # --- EKS Module ---
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 20.0"  # or your current version
+  version = "~> 20.13.0" 
 
   cluster_name    = var.cluster_name
   cluster_version = "1.29"
+
+  subnet_ids      = module.vpc.private_subnets
+  vpc_id          = module.vpc.vpc_id
 
   manage_aws_auth_configmap = true
 
   aws_auth_roles = [
     {
-      rolearn  = module.eks_blueprints_managed_node_group.iam_role_arn
+      rolearn  = module.node_group.iam_role_arn
       username = "system:node:{{EC2PrivateDNSName}}"
       groups   = ["system:bootstrappers", "system:nodes"]
     }
   ]
 }
+
 
 
 # --- OIDC Provider Resources ---

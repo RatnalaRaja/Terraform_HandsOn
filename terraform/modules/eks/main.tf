@@ -10,6 +10,7 @@ resource "aws_iam_role" "cluster" {
     }]
   })
 }
+
 resource "aws_iam_role_policy_attachment" "cluster_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
   role       = aws_iam_role.cluster.name
@@ -27,17 +28,26 @@ resource "aws_iam_role" "nodes" {
     }]
   })
 }
+
 resource "aws_iam_role_policy_attachment" "nodes_worker_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
   role       = aws_iam_role.nodes.name
 }
+
 resource "aws_iam_role_policy_attachment" "nodes_cni_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
   role       = aws_iam_role.nodes.name
 }
+
 resource "aws_iam_role_policy_attachment" "nodes_ecr_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
   role       = aws_iam_role.nodes.name
+}
+
+# ✅ CloudWatch Log Group for EKS Cluster Logging
+resource "aws_cloudwatch_log_group" "eks_cluster" {
+  name              = "/aws/eks/${var.project_name}/cluster"
+  retention_in_days = 7
 }
 
 # EKS Cluster
@@ -52,7 +62,11 @@ resource "aws_eks_cluster" "main" {
     endpoint_public_access  = true
   }
 
+  # ✅ Enable control plane logging
+  enabled_cluster_log_types = ["api", "audit", "authenticator"]
+
   depends_on = [
+    aws_cloudwatch_log_group.eks_cluster,
     aws_iam_role_policy_attachment.cluster_policy,
   ]
 }
@@ -79,3 +93,7 @@ resource "aws_eks_node_group" "main" {
   ]
 }
 
+resource "aws_auth_config_map_aws" "main" {
+  cluster_name = aws_eks_cluster.main.name
+  map_roles    = var.map_roles
+}

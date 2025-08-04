@@ -44,13 +44,8 @@ resource "aws_iam_role_policy_attachment" "nodes_ecr_policy" {
   role       = aws_iam_role.nodes.name
 }
 
-# ✅ CloudWatch Log Group for EKS Cluster Logging
-resource "aws_cloudwatch_log_group" "eks_cluster" {
-  name              = "/aws/eks/${var.project_name}/cluster"
-  retention_in_days = 7
-}
 
-# EKS Cluster
+# EKS Cluster (NO logging enabled)
 resource "aws_eks_cluster" "main" {
   name     = var.project_name
   role_arn = aws_iam_role.cluster.arn
@@ -62,11 +57,8 @@ resource "aws_eks_cluster" "main" {
     endpoint_public_access  = true
   }
 
-  # ✅ Enable control plane logging
-  enabled_cluster_log_types = ["api", "audit", "authenticator"]
 
   depends_on = [
-    aws_cloudwatch_log_group.eks_cluster,
     aws_iam_role_policy_attachment.cluster_policy,
   ]
 }

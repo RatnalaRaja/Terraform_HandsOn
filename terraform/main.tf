@@ -67,22 +67,30 @@ module "eks" {
 
   access_entries = {
     admin = {
-      # This fix is correct. "system:masters" is not allowed.
       kubernetes_groups = ["eks-admin"]
       principal_arn     = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/AdminRole"
     }
   }
-}
 
-# --- DELETED a manual OIDC Provider Resources ---
-# The EKS module creates this automatically. The manual resources have been removed to fix the "EntityAlreadyExists" error.
+  # --- ADDED THIS BLOCK TO PREVENT THE HELM TIMEOUT ERROR ---
+  # This rule allows the GitHub Actions runner to connect to the cluster's public API.
+  cluster_security_group_additional_rules = {
+    github_actions_https_access = {
+      description      = "Allow GitHub Actions Runner to connect to EKS API"
+      protocol         = "tcp"
+      from_port        = 443
+      to_port          = 443
+      type             = "ingress"
+      cidr_blocks      = ["0.0.0.0/0"]
+    }
+  }
+}
 
 # --- IAM Module for IRSA ---
 module "iam" {
   source                   = "./modules/iam"
   project_name             = var.project_name
   s3_bucket_arn            = module.s3.bucket_arn
-  # This line is now CORRECTED to use the output from the EKS module.
   oidc_provider_arn        = module.eks.oidc_provider_arn
   oidc_provider_url        = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
   k8s_namespace            = "gallery-app"
@@ -127,11 +135,9 @@ resource "helm_release" "aws_load_balancer_controller" {
 
 
 # --- ADDED this block to create the Admin Role for EKS access ---
-# This fixes the "invalid principalArn" error.
 resource "aws_iam_role" "admin" {
   name = "AdminRole"
 
-  # This policy allows IAM users in your account to assume this role
   assume_role_policy = jsonencode({
     Version   = "2012-10-17",
     Statement = [
@@ -146,8 +152,6 @@ resource "aws_iam_role" "admin" {
   })
 }
 
-# This policy gives the role full administrator access.
-# For production, you would use a more restrictive policy.
 resource "aws_iam_role_policy_attachment" "admin_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
   role       = aws_iam_role.admin.name

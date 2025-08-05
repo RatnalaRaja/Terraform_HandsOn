@@ -72,16 +72,18 @@ module "eks" {
     }
   }
 
-  # --- ADDED THIS BLOCK TO PREVENT THE HELM TIMEOUT ERROR ---
-  # This rule allows the GitHub Actions runner to connect to the cluster's public API.
+  # --- THIS BLOCK IS THE FINAL FIX FOR THE TIMEOUT ERROR ---
+  # It allows the self-hosted GitHub Actions runner inside the VPC
+  # to connect to the EKS cluster's private API endpoint.
   cluster_security_group_additional_rules = {
-    github_actions_https_access = {
-      description      = "Allow GitHub Actions Runner to connect to EKS API"
-      protocol         = "tcp"
-      from_port        = 443
-      to_port          = 443
-      type             = "ingress"
-      cidr_blocks      = ["0.0.0.0/0"]
+    vpc_internal_https_access = {
+      description = "Allow internal VPC traffic to EKS API for self-hosted runners"
+      protocol    = "tcp"
+      from_port   = 443
+      to_port     = 443
+      type        = "ingress"
+      # This uses the output from your VPC module to get the correct internal IP range
+      cidr_blocks = [module.vpc.vpc_cidr_block]
     }
   }
 }
@@ -91,6 +93,7 @@ module "iam" {
   source                   = "./modules/iam"
   project_name             = var.project_name
   s3_bucket_arn            = module.s3.bucket_arn
+  # This now correctly uses the OIDC provider created by the EKS module
   oidc_provider_arn        = module.eks.oidc_provider_arn
   oidc_provider_url        = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
   k8s_namespace            = "gallery-app"
@@ -134,7 +137,7 @@ resource "helm_release" "aws_load_balancer_controller" {
 }
 
 
-# --- ADDED this block to create the Admin Role for EKS access ---
+# --- This block creates the Admin Role for EKS access ---
 resource "aws_iam_role" "admin" {
   name = "AdminRole"
 

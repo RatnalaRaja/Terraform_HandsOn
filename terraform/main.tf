@@ -67,7 +67,7 @@ module "eks" {
 
   access_entries = {
     admin = {
-      kubernetes_groups = ["system:masters"]
+      kubernetes_groups = ["eks-admin"]
       principal_arn     = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/AdminRole" # Replace with your IAM role or user ARN
     }
   }

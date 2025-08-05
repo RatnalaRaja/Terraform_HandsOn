@@ -38,6 +38,8 @@ module "s3" {
 
 # --- THIS BLOCK NOW CREATES THE NODE GROUP'S IAM ROLE SEPARATELY ---
 # This is the fix for the "NoSuchEntity" race condition.
+# --- THIS BLOCK NOW CREATES THE NODE GROUP'S IAM ROLE SEPARATELY ---
+# This is the fix for the "NoSuchEntity" race condition AND the trust policy.
 resource "aws_iam_role" "eks_node_group" {
   name = "${var.project_name}-eks-node-group-role"
 
@@ -47,14 +49,17 @@ resource "aws_iam_role" "eks_node_group" {
       {
         Effect    = "Allow",
         Principal = {
-          Service = "ec2.amazonaws.com"
+          # THIS IS THE FIX: Added "eks.amazonaws.com" to the list of trusted services.
+          Service = [
+            "ec2.amazonaws.com",
+            "eks.amazonaws.com"
+          ]
         },
         Action    = "sts:AssumeRole"
       }
     ]
   })
 }
-
 resource "aws_iam_role_policy_attachment" "eks_node_group_worker_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
   role       = aws_iam_role.eks_node_group.name

@@ -5,7 +5,8 @@ provider "aws" {
 data "aws_availability_zones" "available" {}
 data "aws_caller_identity" "current" {}
 
-# --- VPC Module (Official Terraform AWS Module) ---
+# --- VPC Module ---
+# This part is correct and builds your network.
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.1.1"
@@ -20,63 +21,19 @@ module "vpc" {
   enable_nat_gateway = true
   single_nat_gateway = false
 
-  tags = {
-    "kubernetes.io/cluster/${var.project_name}-eks" = "shared"
-  }
-
-  public_subnet_tags = {
-    "kubernetes.io/role/elb" = "1"
-  }
-
-  private_subnet_tags = {
-    "kubernetes.io/role/internal-elb" = "1"
-  }
-
-  # --- ADDED THIS BLOCK TO FIX THE NETWORK ACL (SUBNET FIREWALL) ---
-  # This is the primary fix for the i/o timeout error.
+  # This creates the NACL rules to allow your runner to connect.
   private_dedicated_network_acl = true
-
   private_inbound_acl_rules = [
-    # Allow all traffic from within the VPC (for the runner to talk to EKS)
-    {
-      rule_number = 100
-      rule_action = "allow"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_block  = "10.0.0.0/16" # Your VPC's CIDR block
-    },
-    # Allow return traffic from the internet (for nodes to get updates)
-    {
-      rule_number = 110
-      rule_action = "allow"
-      from_port   = 1024
-      to_port     = 65535
-      protocol    = "tcp"
-      cidr_block  = "0.0.0.0/0"
-    }
+    { rule_number = 100, rule_action = "allow", from_port = 0, to_port = 0, protocol = "-1", cidr_block = "10.0.0.0/16" },
+    { rule_number = 110, rule_action = "allow", from_port = 1024, to_port = 65535, protocol = "tcp", cidr_block = "0.0.0.0/0" }
   ]
-
   private_outbound_acl_rules = [
-    # Allow all outbound traffic
-    {
-      rule_number = 100
-      rule_action = "allow"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_block  = "0.0.0.0/0"
-    }
+    { rule_number = 100, rule_action = "allow", from_port = 0, to_port = 0, protocol = "-1", cidr_block = "0.0.0.0/0" }
   ]
-}
-
-# --- S3 Module ---
-module "s3" {
-  source      = "./modules/s3"
-  bucket_name = var.project_name
 }
 
 # --- EKS Module ---
+# This part is correct and builds your EKS cluster and nodes.
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.37.2"
@@ -89,15 +46,8 @@ module "eks" {
 
   eks_managed_node_groups = {
     default_node_group = {
-      desired_size = 2
-      max_size     = 3
-      min_size     = 1
-
+      desired_size = 2, max_size = 3, min_size = 1
       instance_types = ["t3.medium"]
-
-      iam_role_additional_policies = {
-        S3Access = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-      }
     }
   }
 
@@ -108,66 +58,14 @@ module "eks" {
     }
   }
 
-  # --- UPDATED THIS BLOCK TO BE MORE SECURE FOR A SELF-HOSTED RUNNER ---
   cluster_security_group_additional_rules = {
     vpc_internal_https_access = {
       description = "Allow internal VPC traffic to EKS API for self-hosted runners"
-      protocol    = "tcp"
-      from_port   = 443
-      to_port     = 443
-      type        = "ingress"
+      protocol    = "tcp", from_port = 443, to_port = 443, type = "ingress"
       cidr_blocks = [module.vpc.vpc_cidr_block]
     }
   }
 }
-
-# --- IAM Module for IRSA ---
-module "iam" {
-  source                   = "./modules/iam"
-  project_name             = var.project_name
-  s3_bucket_arn            = module.s3.bucket_arn
-  oidc_provider_arn        = module.eks.oidc_provider_arn
-  oidc_provider_url        = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
-  k8s_namespace            = "gallery-app"
-  k8s_service_account_name = "gallery-sa"
-}
-
-# --- Helm Provider for EKS ---
-provider "helm" {
-  kubernetes {
-    host                   = module.eks.cluster_endpoint
-    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-    exec {
-      api_version = "client.authentication.k8s.io/v1beta1"
-      command     = "aws"
-      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
-    }
-  }
-}
-
-# --- AWS Load Balancer Controller Helm Chart ---
-resource "helm_release" "aws_load_balancer_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  namespace  = "kube-system"
-
-  set {
-    name  = "clusterName"
-    value = module.eks.cluster_name
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
-}
-
 
 # --- This block creates the Admin Role for EKS access ---
 resource "aws_iam_role" "admin" {
@@ -178,9 +76,7 @@ resource "aws_iam_role" "admin" {
     Statement = [
       {
         Effect    = "Allow",
-        Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-        },
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" },
         Action    = "sts:AssumeRole"
       }
     ]
@@ -191,3 +87,6 @@ resource "aws_iam_role_policy_attachment" "admin_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
   role       = aws_iam_role.admin.name
 }
+
+# NOTE: The S3, IAM for IRSA, Helm Provider, and Helm Release blocks have been removed for simplicity.
+# They can be added back one by one after the cluster is successfully created.

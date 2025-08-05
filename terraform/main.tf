@@ -8,7 +8,7 @@ data "aws_caller_identity" "current" {}
 # --- VPC Module (Official Terraform AWS Module) ---
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "5.1.1"  # You can adjust this version as needed
+  version = "5.1.1"
 
   name = var.project_name
 
@@ -67,33 +67,23 @@ module "eks" {
 
   access_entries = {
     admin = {
+      # This fix is correct. "system:masters" is not allowed.
       kubernetes_groups = ["eks-admin"]
-      principal_arn     = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/AdminRole" # Replace with your IAM role or user ARN
+      principal_arn     = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/AdminRole"
     }
   }
 }
 
-
-
-
-
-# --- OIDC Provider Resources ---
-data "tls_certificate" "eks" {
-  url = module.eks.cluster_oidc_issuer_url
-}
-
-resource "aws_iam_openid_connect_provider" "eks" {
-  url             = module.eks.cluster_oidc_issuer_url
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
-}
+# --- DELETED a manual OIDC Provider Resources ---
+# The EKS module creates this automatically. The manual resources have been removed to fix the "EntityAlreadyExists" error.
 
 # --- IAM Module for IRSA ---
 module "iam" {
   source                   = "./modules/iam"
   project_name             = var.project_name
   s3_bucket_arn            = module.s3.bucket_arn
-  oidc_provider_arn        = aws_iam_openid_connect_provider.eks.arn # Corrected this line
+  # This line is now CORRECTED to use the output from the EKS module.
+  oidc_provider_arn        = module.eks.oidc_provider_arn
   oidc_provider_url        = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
   k8s_namespace            = "gallery-app"
   k8s_service_account_name = "gallery-sa"
@@ -133,4 +123,32 @@ resource "helm_release" "aws_load_balancer_controller" {
     name  = "serviceAccount.name"
     value = "aws-load-balancer-controller"
   }
+}
+
+
+# --- ADDED this block to create the Admin Role for EKS access ---
+# This fixes the "invalid principalArn" error.
+resource "aws_iam_role" "admin" {
+  name = "AdminRole"
+
+  # This policy allows IAM users in your account to assume this role
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17",
+    Statement = [
+      {
+        Effect    = "Allow",
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        },
+        Action    = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+# This policy gives the role full administrator access.
+# For production, you would use a more restrictive policy.
+resource "aws_iam_role_policy_attachment" "admin_policy" {
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+  role       = aws_iam_role.admin.name
 }

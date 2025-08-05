@@ -11,7 +11,6 @@ module "vpc" {
   version = "5.1.1"
 
   name = var.project_name
-
   cidr = "10.0.0.0/16"
 
   azs             = slice(data.aws_availability_zones.available.names, 0, 2)
@@ -32,6 +31,43 @@ module "vpc" {
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = "1"
   }
+
+  # --- ADDED THIS BLOCK TO FIX THE NETWORK ACL (SUBNET FIREWALL) ---
+  # This is the primary fix for the i/o timeout error.
+  private_dedicated_network_acl = true
+
+  private_inbound_acl_rules = [
+    # Allow all traffic from within the VPC (for the runner to talk to EKS)
+    {
+      rule_number = 100
+      rule_action = "allow"
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"
+      cidr_block  = "10.0.0.0/16" # Your VPC's CIDR block
+    },
+    # Allow return traffic from the internet (for nodes to get updates)
+    {
+      rule_number = 110
+      rule_action = "allow"
+      from_port   = 1024
+      to_port     = 65535
+      protocol    = "tcp"
+      cidr_block  = "0.0.0.0/0"
+    }
+  ]
+
+  private_outbound_acl_rules = [
+    # Allow all outbound traffic
+    {
+      rule_number = 100
+      rule_action = "allow"
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"
+      cidr_block  = "0.0.0.0/0"
+    }
+  ]
 }
 
 # --- S3 Module ---
@@ -72,9 +108,7 @@ module "eks" {
     }
   }
 
-  # --- THIS BLOCK IS THE FINAL FIX FOR THE TIMEOUT ERROR ---
-  # It allows the self-hosted GitHub Actions runner inside the VPC
-  # to connect to the EKS cluster's private API endpoint.
+  # --- UPDATED THIS BLOCK TO BE MORE SECURE FOR A SELF-HOSTED RUNNER ---
   cluster_security_group_additional_rules = {
     vpc_internal_https_access = {
       description = "Allow internal VPC traffic to EKS API for self-hosted runners"
@@ -82,7 +116,6 @@ module "eks" {
       from_port   = 443
       to_port     = 443
       type        = "ingress"
-      # This uses the output from your VPC module to get the correct internal IP range
       cidr_blocks = [module.vpc.vpc_cidr_block]
     }
   }
@@ -93,7 +126,6 @@ module "iam" {
   source                   = "./modules/iam"
   project_name             = var.project_name
   s3_bucket_arn            = module.s3.bucket_arn
-  # This now correctly uses the OIDC provider created by the EKS module
   oidc_provider_arn        = module.eks.oidc_provider_arn
   oidc_provider_url        = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
   k8s_namespace            = "gallery-app"

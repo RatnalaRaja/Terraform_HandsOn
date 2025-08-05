@@ -44,8 +44,13 @@ resource "aws_iam_role_policy_attachment" "nodes_ecr_policy" {
   role       = aws_iam_role.nodes.name
 }
 
+# -------------------------------------------------------------------
+# The aws_cloudwatch_log_group resource has been REMOVED.
+# The EKS service will create and manage the log group automatically
+# when enabled_cluster_log_types is set.
+# -------------------------------------------------------------------
 
-# EKS Cluster (NO logging enabled)
+# EKS Cluster
 resource "aws_eks_cluster" "main" {
   name     = var.project_name
   role_arn = aws_iam_role.cluster.arn
@@ -57,7 +62,10 @@ resource "aws_eks_cluster" "main" {
     endpoint_public_access  = true
   }
 
+  # This setting tells the EKS service to automatically create the log group for you.
+  enabled_cluster_log_types = ["api", "audit", "authenticator"]
 
+  # The explicit depends_on is no longer needed.
   depends_on = [
     aws_iam_role_policy_attachment.cluster_policy,
   ]
